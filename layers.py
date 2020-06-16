@@ -102,11 +102,11 @@ class SpGraphAttentionLayer(nn.Module):
     def forward(self, input, edge, edge_embed, edge_list_nhop, edge_embed_nhop):
         N = input.size()[0]
 
-        # Self-attention on the nodes - Shared attention mechanism
+        # Self-attention on the nodes - Shared attention mechanism, todo:rooh we just concatenate direct and nhop edges and their embeddings
         edge = torch.cat((edge[:, :], edge_list_nhop[:, :]), dim=1)
         edge_embed = torch.cat(
             (edge_embed[:, :], edge_embed_nhop[:, :]), dim=0)
-
+        #this is cijk in the paper
         edge_h = torch.cat(
             (input[edge[0, :], :], input[edge[1, :], :], edge_embed[:, :]), dim=1).t()
         # edge_h: (2*in_dim + nrela_dim) x E

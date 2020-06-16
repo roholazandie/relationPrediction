@@ -107,13 +107,13 @@ def load_data(args):
     return corpus, torch.FloatTensor(entity_embeddings), torch.FloatTensor(relation_embeddings)
 
 
-Corpus_, entity_embeddings, relation_embeddings = load_data(args)
+corpus, entity_embeddings, relation_embeddings = load_data(args)
 
 
 if(args.get_2hop):
     file = args.data + "/2hop.pickle"
     with open(file, 'wb') as handle:
-        pickle.dump(Corpus_.node_neighbors_2hop, handle,
+        pickle.dump(corpus.node_neighbors_2hop, handle,
                     protocol=pickle.HIGHEST_PROTOCOL)
 
 
@@ -174,8 +174,8 @@ def train_gat(args):
     model_gat = SpKBGATModified(entity_embeddings, relation_embeddings, args.entity_out_dim, args.entity_out_dim,
                                 args.drop_GAT, args.alpha, args.nheads_GAT)
 
-    if CUDA:
-        model_gat.cuda()
+    #if headTailSelectorCUDA:
+    model_gat.cuda()
 
     optimizer = torch.optim.Adam(
         model_gat.parameters(), lr=args.lr, weight_decay=args.weight_decay_gat)
@@ -187,8 +187,8 @@ def train_gat(args):
 
     current_batch_2hop_indices = torch.tensor([])
     if(args.use_2hop):
-        current_batch_2hop_indices = Corpus_.get_batch_nhop_neighbors_all(args,
-                                                                          Corpus_.unique_entities_train, node_neighbors_2hop)
+        current_batch_2hop_indices = corpus.get_batch_nhop_neighbors_all(args,
+                                                                         corpus.unique_entities_train, node_neighbors_2hop)
 
     if CUDA:
         current_batch_2hop_indices = Variable(
@@ -202,24 +202,23 @@ def train_gat(args):
 
     for epoch in range(args.epochs_gat):
         print("\nepoch-> ", epoch)
-        random.shuffle(Corpus_.train_triples)
-        Corpus_.train_indices = np.array(
-            list(Corpus_.train_triples)).astype(np.int32)
+        random.shuffle(corpus.train_triples)
+        corpus.train_indices = np.array(
+            list(corpus.train_triples)).astype(np.int32)
 
         model_gat.train()  # getting in training mode
         start_time = time.time()
         epoch_loss = []
 
-        if len(Corpus_.train_indices) % args.batch_size_gat == 0:
+        if len(corpus.train_indices) % args.batch_size_gat == 0:
             num_iters_per_epoch = len(
-                Corpus_.train_indices) // args.batch_size_gat
+                corpus.train_indices) // args.batch_size_gat
         else:
-            num_iters_per_epoch = (
-                len(Corpus_.train_indices) // args.batch_size_gat) + 1
+            num_iters_per_epoch = (len(corpus.train_indices) // args.batch_size_gat) + 1
 
         for iters in range(num_iters_per_epoch):
             start_time_iter = time.time()
-            train_indices, train_values = Corpus_.get_iteration_batch(iters)
+            train_indices, train_values = corpus.get_iteration_batch(iters)
 
             if CUDA:
                 train_indices = Variable(
@@ -231,8 +230,7 @@ def train_gat(args):
                 train_values = Variable(torch.FloatTensor(train_values))
 
             # forward pass
-            entity_embed, relation_embed = model_gat(
-                Corpus_, Corpus_.train_adj_matrix, train_indices, current_batch_2hop_indices)
+            entity_embed, relation_embed = model_gat(corpus.train_adj_matrix, train_indices, current_batch_2hop_indices)
 
             optimizer.zero_grad()
 
@@ -280,8 +278,8 @@ def train_conv(args):
     model_conv.final_entity_embeddings = model_gat.final_entity_embeddings
     model_conv.final_relation_embeddings = model_gat.final_relation_embeddings
 
-    Corpus_.batch_size = args.batch_size_conv
-    Corpus_.invalid_valid_ratio = int(args.valid_invalid_ratio_conv)
+    corpus.batch_size = args.batch_size_conv
+    corpus.invalid_valid_ratio = int(args.valid_invalid_ratio_conv)
 
     optimizer = torch.optim.Adam(
         model_conv.parameters(), lr=args.lr, weight_decay=args.weight_decay_conv)
@@ -296,24 +294,24 @@ def train_conv(args):
 
     for epoch in range(args.epochs_conv):
         print("\nepoch-> ", epoch)
-        random.shuffle(Corpus_.train_triples)
-        Corpus_.train_indices = np.array(
-            list(Corpus_.train_triples)).astype(np.int32)
+        random.shuffle(corpus.train_triples)
+        corpus.train_indices = np.array(
+            list(corpus.train_triples)).astype(np.int32)
 
         model_conv.train()  # getting in training mode
         start_time = time.time()
         epoch_loss = []
 
-        if len(Corpus_.train_indices) % args.batch_size_conv == 0:
+        if len(corpus.train_indices) % args.batch_size_conv == 0:
             num_iters_per_epoch = len(
-                Corpus_.train_indices) // args.batch_size_conv
+                corpus.train_indices) // args.batch_size_conv
         else:
             num_iters_per_epoch = (
-                len(Corpus_.train_indices) // args.batch_size_conv) + 1
+                                          len(corpus.train_indices) // args.batch_size_conv) + 1
 
         for iters in range(num_iters_per_epoch):
             start_time_iter = time.time()
-            train_indices, train_values = Corpus_.get_iteration_batch(iters)
+            train_indices, train_values = corpus.get_iteration_batch(iters)
 
             if CUDA:
                 train_indices = Variable(
@@ -325,7 +323,7 @@ def train_conv(args):
                 train_values = Variable(torch.FloatTensor(train_values))
 
             preds = model_conv(
-                Corpus_, Corpus_.train_adj_matrix, train_indices)
+                corpus, corpus.train_adj_matrix, train_indices)
 
             optimizer.zero_grad()
 
@@ -346,8 +344,9 @@ def train_conv(args):
             epoch, sum(epoch_loss) / len(epoch_loss), time.time() - start_time))
         epoch_losses.append(sum(epoch_loss) / len(epoch_loss))
 
-        save_model(model_conv, args.data, epoch,
-                   args.output_folder + "conv/")
+        if epoch % 100 == 0:
+            save_model(model_conv, args.data, epoch,
+                       args.output_folder + "conv/")
 
 
 def evaluate_conv(args, unique_entities):
@@ -360,10 +359,10 @@ def evaluate_conv(args, unique_entities):
     model_conv.cuda()
     model_conv.eval()
     with torch.no_grad():
-        Corpus_.get_validation_pred(args, model_conv, unique_entities)
+        corpus.get_validation_pred(args, model_conv, unique_entities)
 
 
 train_gat(args)
 
 train_conv(args)
-evaluate_conv(args, Corpus_.unique_entities_train)
+evaluate_conv(args, corpus.unique_entities_train)

@@ -343,7 +343,7 @@ class Corpus:
         source_embeds = entity_embeddings[batch_inputs[:, 0]]
         relation_embeds = relation_embeddings[batch_inputs[:, 1]]
         tail_embeds = entity_embeddings[batch_inputs[:, 2]]
-        x = source_embeds + relation_embed - tail_embeds
+        x = source_embeds + relation_embeds - tail_embeds
         x = torch.norm(x, p=1, dim=1)
         return x
 
